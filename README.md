@@ -14,7 +14,7 @@ This project turns “a pile of PDFs (and links)” into a searchable, chunked k
 2. **Retrieve**: semantic search over embeddings + metadata filters  
 3. **Generate**: send the retrieved context to an Ollama model for grounded answers
 
-![Example Image]("./example.png")
+![Example Image](example.png)
 
 ---
 
