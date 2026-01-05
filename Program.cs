@@ -11,7 +11,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddRadzenComponents();
 
 
-SqliteRagStore sqliteRagStore = new("legalchka_knowledge.db");
+SqliteRagStore sqliteRagStore = new("legalka_knowledge.db");
 builder.Services.AddSingleton(sqliteRagStore);
 builder.Services.AddSingleton<Paralegal>();
 builder.Services.AddSingleton<IDocumentIngestService, DocumentIngestService>();

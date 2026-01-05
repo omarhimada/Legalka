@@ -8,7 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="README.md" />
+  </ItemGroup>
+
+  <ItemGroup>
 	<Content Include="Properties\launchSettings.json" />
+	<Content Include="README.md">
+	  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	</Content>
   </ItemGroup>
 
 	<ItemGroup>
@@ -17,6 +24,7 @@
 		<PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.1" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
 		<PackageReference Include="Ollama" Version="1.15.0" />
+		<PackageReference Include="OllamaSharp" Version="5.4.12" />
 		<PackageReference Include="PdfPig" Version="0.1.13" />
 		<PackageReference Include="Radzen.Blazor" Version="8.4.2" />
 		<PackageReference Include="System.Text.Json" Version="10.0.1" />
