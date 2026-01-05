@@ -1,0 +1,494 @@
+﻿@page "/"
+@using System.ComponentModel.DataAnnotations
+@using Legalka.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using Radzen
+
+<RadzenContent Container="main">
+    <RadzenStack Gap="12px">
+        <RadzenCard>
+            <RadzenText TextStyle="TextStyle.H4">Document Ingest</RadzenText>
+            <RadzenText TextStyle="TextStyle.Subtitle2">
+                Bulk upload PDFs, add URLs, or pull from Google Drive/Docs (scaffold).
+            </RadzenText>
+        </RadzenCard>
+
+        <RadzenTabs>
+            <Tabs>
+                <!-- ===================== -->
+                <!-- Upload PDFs -->
+                <!-- ===================== -->
+                <RadzenTabsItem Text="Upload PDFs">
+                    <RadzenCard>
+                        <RadzenAlert Severity="AlertSeverity.Info" Style="margin-bottom: 10px;">
+                            Select multiple PDFs. They will be staged. Click <b>Ingest Selected</b> to process them.
+                        </RadzenAlert>
+
+                        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="10px">
+                            <!-- RadzenUpload can auto-upload; we disable auto and handle manually -->
+                            <RadzenUpload ChooseText="Select PDFs"
+                                          Multiple="true"
+                                          Accept=".pdf"
+                                          Auto="false"
+                                          Progress="@OnUploadProgress"
+                                          Change="@OnUploadChange" />
+
+                            <RadzenButton Text=@($"Ingest Selected ({_stagedUploads.Count})")
+                                          Icon="play_circle"
+                                          Disabled="@(!_stagedUploads.Any())"
+                                          Click="@IngestStagedUploads"
+                                          ButtonStyle="ButtonStyle.Primary" />
+
+                            <RadzenButton Text="Clear"
+                                          Icon="delete"
+                                          Disabled="@(!_stagedUploads.Any())"
+                                          Click="@ClearUploads"
+                                          ButtonStyle="ButtonStyle.Danger" />
+                        </RadzenStack>
+
+                        <RadzenDivider />
+
+                        <RadzenDataGrid Data="@_stagedUploads"
+                                        TItem="UploadItem"
+                                        AllowFiltering="false"
+                                        AllowSorting="true"
+                                        AllowPaging="true"
+                                        PageSize="10"
+                                        ColumnWidth="220px"
+                                        Responsive="true">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="UploadItem" Property="FileName" Title="File" />
+                                <RadzenDataGridColumn TItem="UploadItem" Title="Size">
+                                    <Template Context="row">
+                                        @FormatBytes(row.SizeBytes)
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="UploadItem" Title="Status">
+                                    <Template Context="row">
+                                        <RadzenBadge Text="@row.Status" Style="@BadgeStyle(row.Status)" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="UploadItem" Title="Actions" Sortable="false" Filterable="false">
+                                    <Template Context="row">
+                                        <RadzenButton Icon="delete"
+                                                      ButtonStyle="ButtonStyle.Danger"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => RemoveUpload(row.Id))"
+                                                      Text="Remove" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenCard>
+                </RadzenTabsItem>
+
+                <!-- ===================== -->
+                <!-- URLs -->
+                <!-- ===================== -->
+                <RadzenTabsItem Text="URLs">
+                    <RadzenCard>
+                        <RadzenAlert Severity="AlertSeverity.Info" Style="margin-bottom: 10px;">
+                            Add URLs (web pages or direct PDF links). You can paste many at once.
+                        </RadzenAlert>
+
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="10px" AlignItems="AlignItems.Center">
+                            <RadzenTextBox Style="width: 520px"
+                                           Placeholder="https://example.com/page-or.pdf"
+                                           @bind-Value="_urlForm.Url" />
+                            <RadzenButton Text="Add"
+                                          Icon="add"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          Click="@AddUrl" />
+                        </RadzenStack>
+
+                        <RadzenTextArea Style="width: 100%; margin-top: 10px;"
+                                        Rows="4"
+                                        Placeholder="Paste multiple URLs here (one per line), then click Import"
+                                        @bind-Value="_bulkUrlText" />
+
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="10px" Style="margin-top: 10px;">
+                            <RadzenButton Text="Import from Text"
+                                          Icon="content_paste"
+                                          Disabled="@string.IsNullOrWhiteSpace(_bulkUrlText)"
+                                          Click="@ImportUrlsFromTextarea" />
+
+                            <RadzenButton Text=@($"Ingest URLs ({_urlItems.Count})")
+                                          Icon="play_circle"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          Disabled="@(!_urlItems.Any())"
+                                          Click="@IngestUrls" />
+
+                            <RadzenButton Text="Clear"
+                                          Icon="delete"
+                                          ButtonStyle="ButtonStyle.Danger"
+                                          Disabled="@(!_urlItems.Any())"
+                                          Click="@ClearUrls" />
+                        </RadzenStack>
+
+                        <RadzenDivider />
+
+                        <RadzenDataGrid Data="@_urlItems"
+                                        TItem="UrlItem"
+                                        AllowFiltering="false"
+                                        AllowSorting="true"
+                                        AllowPaging="true"
+                                        PageSize="10"
+                                        Responsive="true">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="UrlItem" Title="URL">
+                                    <Template Context="row">
+                                        <a href="@row.Url" target="_blank" rel="noopener noreferrer">@row.Url</a>
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="UrlItem" Title="Status">
+                                    <Template Context="row">
+                                        <RadzenBadge Text="@row.Status" Style="@BadgeStyle(row.Status)" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+
+                                <RadzenDataGridColumn TItem="UrlItem" Title="Actions" Sortable="false" Filterable="false">
+                                    <Template Context="row">
+                                        <RadzenButton Icon="delete"
+                                                      ButtonStyle="ButtonStyle.Danger"
+                                                      Size="ButtonSize.Small"
+                                                      Click="@(() => RemoveUrl(row.Id))"
+                                                      Text="Remove" />
+                                    </Template>
+                                </RadzenDataGridColumn>
+                            </Columns>
+                        </RadzenDataGrid>
+                    </RadzenCard>
+                </RadzenTabsItem>
+
+                <!-- ===================== -->
+                <!-- Google Drive / Docs Scaffold -->
+                <!-- ===================== -->
+                <RadzenTabsItem Text="Google Drive / Docs">
+                    <RadzenCard>
+                        <RadzenAlert Severity="AlertSeverity.Warning" Style="margin-bottom: 10px;">
+                            This is a scaffold. Wire OAuth + Google Drive API server-side, then import Docs/PDFs and ingest them like the other tabs.
+                        </RadzenAlert>
+
+                        <RadzenStack Orientation="Orientation.Horizontal" Gap="10px">
+                            <RadzenButton Text="Connect Google"
+                                          Icon="link"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          Click="@ConnectGoogle" />
+
+                            <RadzenButton Text="List Files"
+                                          Icon="list"
+                                          Disabled="@(!_googleConnected)"
+                                          Click="@ListGoogleFiles" />
+
+                            <RadzenButton Text="Import Selected"
+                                          Icon="download"
+                                          ButtonStyle="ButtonStyle.Primary"
+                                          Disabled="@(!_googleConnected || !_googleFiles.Any() || !_googleSelectedIds.Any())"
+                                          Click="@ImportSelectedGoogleFiles" />
+                        </RadzenStack>
+
+                        <RadzenDivider />
+
+                        @if (!_googleConnected)
+                        {
+                            <RadzenText TextStyle="TextStyle.Subtitle2">Not connected.</RadzenText>
+                        }
+                        else
+                        {
+                            <RadzenDataGrid Data="@_googleFiles"
+                                            TItem="GoogleFileItem"
+                                            AllowFiltering="false"
+                                            AllowSorting="true"
+                                            AllowPaging="true"
+                                            PageSize="10"
+                                            Responsive="true"
+                                            SelectionMode="DataGridSelectionMode.Multiple"
+                                            @bind-Value="_googleSelection">
+                                <Columns>
+                                    <RadzenDataGridColumn TItem="GoogleFileItem" Property="Name" Title="Name" />
+                                    <RadzenDataGridColumn TItem="GoogleFileItem" Property="MimeType" Title="Type" />
+                                    <RadzenDataGridColumn TItem="GoogleFileItem" Title="Modified">
+                                        <Template Context="row">@row.ModifiedTimeLocal.ToString("yyyy-MM-dd HH:mm")</Template>
+                                    </RadzenDataGridColumn>
+                                </Columns>
+                            </RadzenDataGrid>
+                        }
+                    </RadzenCard>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    </RadzenStack>
+</RadzenContent>
+
+@code {
+    [Inject] private NotificationService Notifications { get; set; } = default!;
+    [Inject] private IDocumentIngestService IngestService { get; set; } = default!;
+
+    // ---------------------------
+    // Upload tab
+    // ---------------------------
+    private readonly List<UploadItem> _stagedUploads = new();
+
+    private void OnUploadProgress(UploadProgressArgs args)
+    {
+        // Optional: show progress (args.Progress is %)
+    }
+
+    private async Task OnUploadChange(UploadChangeEventArgs args)
+    {
+        // Radzen gives files as IBrowserFile
+        foreach (var file in args.Files)
+        {
+            if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (_stagedUploads.Any(x => x.FileName.Equals(file.Name, StringComparison.OrdinalIgnoreCase) && x.SizeBytes == file.Size))
+                continue;
+
+            _stagedUploads.Add(new UploadItem
+            {
+                Id = Guid.NewGuid(),
+                FileName = file.Name,
+                SizeBytes = file.Size,
+                Status = "Staged",
+                File = file
+            });
+        }
+
+        await Task.CompletedTask;
+    }
+
+    private async Task IngestStagedUploads()
+    {
+        try
+        {
+            foreach (var item in _stagedUploads) item.Status = "Ingesting";
+            StateHasChanged();
+
+            foreach (var item in _stagedUploads.ToList())
+            {
+                await using var stream = item.File!.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                await IngestService.IngestPdfAsync(item.FileName, stream, CancellationToken.None);
+                item.Status = "Done";
+            }
+
+            NotifySuccess($"Ingested {_stagedUploads.Count} PDFs.");
+        }
+        catch (Exception ex)
+        {
+            foreach (var item in _stagedUploads.Where(x => x.Status == "Ingesting"))
+                item.Status = "Failed";
+
+            NotifyError($"PDF ingest failed: {ex.Message}");
+        }
+    }
+
+    private void ClearUploads() => _stagedUploads.Clear();
+
+    private void RemoveUpload(Guid id)
+    {
+        var x = _stagedUploads.FirstOrDefault(s => s.Id == id);
+        if (x is not null) _stagedUploads.Remove(x);
+    }
+
+    // ---------------------------
+    // URL tab
+    // ---------------------------
+    private string _bulkUrlText = "";
+    private readonly UrlForm _urlForm = new();
+    private readonly List<UrlItem> _urlItems = new();
+
+    private void AddUrl()
+    {
+        var url = (_urlForm.Url ?? "").Trim();
+        if (!Uri.TryCreate(url, UriKind.Absolute, out _))
+        {
+            NotifyWarn("Please enter a valid absolute URL.");
+            return;
+        }
+
+        if (_urlItems.Any(x => x.Url.Equals(url, StringComparison.OrdinalIgnoreCase)))
+        {
+            NotifyInfo("That URL is already in the list.");
+            return;
+        }
+
+        _urlItems.Add(new UrlItem { Id = Guid.NewGuid(), Url = url, Status = "Staged" });
+        _urlForm.Url = "";
+    }
+
+    private void ImportUrlsFromTextarea()
+    {
+        var lines = (_bulkUrlText ?? "")
+            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        int added = 0;
+        foreach (var url in lines)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out _)) continue;
+            if (_urlItems.Any(x => x.Url.Equals(url, StringComparison.OrdinalIgnoreCase))) continue;
+
+            _urlItems.Add(new UrlItem { Id = Guid.NewGuid(), Url = url, Status = "Staged" });
+            added++;
+        }
+
+        _bulkUrlText = "";
+        NotifyInfo($"Imported {added} URLs.");
+    }
+
+    private async Task IngestUrls()
+    {
+        try
+        {
+            foreach (var u in _urlItems) u.Status = "Ingesting";
+            StateHasChanged();
+
+            foreach (var u in _urlItems.ToList())
+            {
+                await IngestService.IngestUrlAsync(u.Url, CancellationToken.None);
+                u.Status = "Done";
+            }
+
+            NotifySuccess($"Ingested {_urlItems.Count} URLs.");
+        }
+        catch (Exception ex)
+        {
+            foreach (var u in _urlItems.Where(x => x.Status == "Ingesting"))
+                u.Status = "Failed";
+
+            NotifyError($"URL ingest failed: {ex.Message}");
+        }
+    }
+
+    private void ClearUrls() => _urlItems.Clear();
+
+    private void RemoveUrl(Guid id)
+    {
+        var x = _urlItems.FirstOrDefault(s => s.Id == id);
+        if (x is not null) _urlItems.Remove(x);
+    }
+
+    // ---------------------------
+    // Google scaffold
+    // ---------------------------
+    private bool _googleConnected;
+    private readonly List<GoogleFileItem> _googleFiles = new();
+
+    private IList<GoogleFileItem> _googleSelection = new List<GoogleFileItem>();
+    private HashSet<string> _googleSelectedIds => _googleSelection.Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private void ConnectGoogle()
+    {
+        _googleConnected = true;
+        NotifyInfo("Google connection scaffold enabled. Wire OAuth + Drive API server-side next.");
+    }
+
+    private void ListGoogleFiles()
+    {
+        _googleFiles.Clear();
+        _googleFiles.AddRange(new[]
+        {
+            new GoogleFileItem { Id="1", Name="Example Doc", MimeType="application/vnd.google-apps.document", ModifiedTimeLocal=DateTime.Now.AddDays(-2) },
+            new GoogleFileItem { Id="2", Name="Example PDF", MimeType="application/pdf", ModifiedTimeLocal=DateTime.Now.AddDays(-1) }
+        });
+
+        NotifySuccess($"Loaded {_googleFiles.Count} example files (stub).");
+    }
+
+    private async Task ImportSelectedGoogleFiles()
+    {
+        try
+        {
+            var selected = _googleSelection.ToList();
+            if (selected.Count == 0)
+            {
+                NotifyWarn("Select at least one file.");
+                return;
+            }
+
+            // TODO:
+            // For each file:
+            // - If Google Doc: export to PDF/text via Drive API
+            // - If PDF: download bytes
+            // Then call ingest service (IngestPdfAsync or IngestTextAsync)
+
+            await Task.Delay(50);
+            NotifySuccess($"Imported {selected.Count} Google files (stub).");
+        }
+        catch (Exception ex)
+        {
+            NotifyError($"Google import failed: {ex.Message}");
+        }
+    }
+
+    // ---------------------------
+    // Helpers / Models
+    // ---------------------------
+    private static string BadgeStyle(string status) => status switch
+    {
+        "Done" => "background: #1f7a1f; color: white;",
+        "Failed" => "background: #a61b1b; color: white;",
+        "Ingesting" => "background: #2f54eb; color: white;",
+        _ => "background: #595959; color: white;"
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private sealed class UploadItem
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = "";
+        public long SizeBytes { get; set; }
+        public string Status { get; set; } = "Staged";
+        public IBrowserFile? File { get; set; }
+    }
+
+    private sealed class UrlItem
+    {
+        public Guid Id { get; set; }
+        public string Url { get; set; } = "";
+        public string Status { get; set; } = "Staged";
+    }
+
+    private sealed class UrlForm
+    {
+        [Required] public string? Url { get; set; }
+    }
+
+    private sealed class GoogleFileItem
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string MimeType { get; set; } = "";
+        public DateTime ModifiedTimeLocal { get; set; }
+    }
+
+    private void NotifySuccess(string message) =>
+        Notifications.Notify(new NotificationMessage { Severity = NotificationSeverity.Success, Summary = "OK", Detail = message, Duration = 4000 });
+
+    private void NotifyInfo(string message) =>
+        Notifications.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = "Info", Detail = message, Duration = 4000 });
+
+    private void NotifyWarn(string message) =>
+        Notifications.Notify(new NotificationMessage { Severity = NotificationSeverity.Warning, Summary = "Warning", Detail = message, Duration = 5000 });
+
+    private void NotifyError(string message) =>
+        Notifications.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = message, Duration = 7000 });
+}
