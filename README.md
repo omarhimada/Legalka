@@ -1,5 +1,7 @@
 ﻿# Document Ingest (Ollama + SQLite RAG)
 
+**A friend of mine needed a lawyer - so I hooked him up with his own personal lawyer for free. It uses OLLama and a local SQLite RAG system. I think he found it more funny than useful. Although it was a fun experiment.**
+
 Ingesting documents into a **SQLite-backed RAG** store and query them with **Ollama**. 
 Upload **multiple PDFs at once**, add **URLs**, and (optionally) pull from **Google Drive / Google Docs** (scaffold/integration-ready). 
 Built with the Radzen & Blazor combo has been great for UI/UX.
