@@ -1,53 +1,50 @@
-﻿using Legalchka.Services;
-using Legalka.Services;
-using Legalka.Utility;
+﻿using Eloi.Services.Documents;
+using Eloi.Services.Http;
+using Eloi.Services.RetrievalAugmentation;
+using Eloi.Utility;
 
-namespace Legalchka.Models {
-    public class Learner {
-        public sealed class KnowledgeIngestor {
-            private readonly OllamaClient _ai;
-            private readonly SqliteRagStore _store;
+namespace Eloi.Models {
+    public sealed class KnowledgeIngestor {
+        private readonly BookLover _bookLover;
+        private readonly EloiClient _eloiClient;
+        private readonly RetrievalAugmentService _ras;
 
-            public KnowledgeIngestor(OllamaClient ai, SqliteRagStore store) {
-                _ai = ai;
-                _store = store;
+        public KnowledgeIngestor(BookLover booklover, EloiClient eloiClient, RetrievalAugmentService ras) {
+            _bookLover = booklover;
+            _eloiClient = eloiClient;
+            _ras = ras;
+        }
+
+        public async Task IngestPdfAsync(string pdfPath, CancellationToken ct) {
+            string text = _bookLover.ExtractText(pdfPath);
+
+            // If text is empty, you’d OCR images of pages instead (not shown: PDF->images)
+            if (string.IsNullOrWhiteSpace(text)) {
+                throw new InvalidOperationException("PDF has no extractable text. Use OCR pipeline for scanned PDFs.");
             }
 
-            public async Task IngestPdfAsync(string pdfPath, CancellationToken ct) {
-                string text = Paralegal.ExtractText(pdfPath);
+            await IngestTextAsync(sourceId: $"pdf:{Path.GetFileName(pdfPath)}", text, ct);
+        }
 
-                // If text is empty, you’d OCR images of pages instead (not shown: PDF->images)
-                if (string.IsNullOrWhiteSpace(text))
-                    throw new InvalidOperationException("PDF has no extractable text. Use OCR pipeline for scanned PDFs.");
+        public async Task IngestWebAsync(string url, CancellationToken ct) {
+            string text = await WebReach.ExtractTextFromUrlAsync(url, ct);
+            await IngestTextAsync(sourceId: $"url:{url}", text, ct);
+        }
 
-                await IngestTextAsync(sourceId: $"pdf:{Path.GetFileName(pdfPath)}", text, ct);
-            }
-
-            public async Task IngestWebAsync(string url, CancellationToken ct) {
-                string text = await WebLeg.ExtractTextFromUrlAsync(url, ct);
-                await IngestTextAsync(sourceId: $"url:{url}", text, ct);
-            }
-
-            private async Task IngestTextAsync(string sourceId, string text, CancellationToken ct) {
-                foreach ((int idx, string? chunk) in Parter.ChunkByChars(text)) {
-                    float[] emb = await _ai.EmbedAsync(chunk, ct);
-                    _store.Upsert(sourceId, idx, chunk, emb);
-                }
-            }
-
-            public async Task<string> AskAsync(string question, CancellationToken ct) {
-                float[] qEmb = await _ai.EmbedAsync(question, ct);
-                List<(string sourceId, int chunkIndex, string text, float score)> hits = _store.Search(qEmb, topK: 6);
-
-                IEnumerable<(string summary, string text)> context =
-                    hits.Select(h => ($"{h.sourceId}#{h.chunkIndex} (score={h.score:0.000})", h.text));
-
-                string contextBlock = string.Join(
-                    "\n\n",
-                    context.Select(c => $"[{c.summary}]\n{c.text}")
-                );
-
-                return await _ai.ChatAsync(question, contextBlock, ct);
+        /// <summary>
+        /// Processes the specified text by dividing it into chunks, generating embeddings for each chunk, and storing
+        /// the results associated with the given source identifier.
+        /// </summary>
+        /// <remarks>Each chunk of the input text is embedded and upserted individually. The operation is
+        /// performed asynchronously and can be cancelled via the provided cancellation token.</remarks>
+        /// <param name="sourceId">The unique identifier for the source to associate with the ingested text chunks and their embeddings.</param>
+        /// <param name="text">The text content to be chunked, embedded, and ingested. Cannot be null.</param>
+        /// <param name="ct">A cancellation token that can be used to cancel the asynchronous operation.</param>
+        /// <returns>A task that represents the asynchronous ingest operation.</returns>
+        private async Task IngestTextAsync(string sourceId, string text, CancellationToken ct) {
+            foreach ((int idx, string? chunk) in Tokenizer.ChunkByChars(text)) {
+                float[] emb = await _eloiClient.EmbedAsync(chunk, ct);
+                _ras.Upsert(sourceId, idx, chunk, emb);
             }
         }
     }

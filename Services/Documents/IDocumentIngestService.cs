@@ -1,4 +1,4 @@
-﻿namespace Legalka.Services {
+﻿namespace Eloi.Services.Documents {
     public interface IDocumentIngestService {
         Task IngestPdfAsync(string fileName, Stream content, CancellationToken ct);
         Task IngestUrlAsync(string url, CancellationToken ct);

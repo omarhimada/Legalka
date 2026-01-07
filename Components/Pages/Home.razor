@@ -1,8 +1,13 @@
 ﻿@page "/"
 @using System.ComponentModel.DataAnnotations
-@using Legalka.Services
+@using Eloi.Models
+@using Eloi.Services
+@using Eloi.Services.Documents
+@using Eloi.Services.RetrievalAugmentation
 @using Microsoft.AspNetCore.Components.Forms
 @using Radzen
+@inject KnowledgeIngestor Ingestor
+@inject RetrievalAugmentService RetrievalAugmentService
 
 <RadzenContent Container="main">
     <RadzenStack Gap="12px">
@@ -15,9 +20,12 @@
 
         <RadzenTabs>
             <Tabs>
-                <!-- ===================== -->
-                <!-- Upload PDFs -->
-                <!-- ===================== -->
+                <RadzenTabsItem Text="Chat">
+                    <RadzenTextArea @bind-Value="Question" Style="width: 100%; height: 120px" />
+                    <RadzenButton Text="Ask" Click="@Ask" />
+                    <pre style="white-space:pre-wrap">@Answer</pre>
+                </RadzenTabsItem>
+
                 <RadzenTabsItem Text="Upload PDFs">
                     <RadzenCard>
                         <RadzenAlert Severity="AlertSeverity.Info" Style="margin-bottom: 10px;">
@@ -45,8 +53,6 @@
                                           Click="@ClearUploads"
                                           ButtonStyle="ButtonStyle.Danger" />
                         </RadzenStack>
-
-                        <RadzenDivider />
 
                         <RadzenDataGrid Data="@_stagedUploads"
                                         TItem="UploadItem"
@@ -84,9 +90,6 @@
                     </RadzenCard>
                 </RadzenTabsItem>
 
-                <!-- ===================== -->
-                <!-- URLs -->
-                <!-- ===================== -->
                 <RadzenTabsItem Text="URLs">
                     <RadzenCard>
                         <RadzenAlert Severity="AlertSeverity.Info" Style="margin-bottom: 10px;">
@@ -127,7 +130,6 @@
                                           Click="@ClearUrls" />
                         </RadzenStack>
 
-                        <RadzenDivider />
 
                         <RadzenDataGrid Data="@_urlItems"
                                         TItem="UrlItem"
@@ -163,9 +165,6 @@
                     </RadzenCard>
                 </RadzenTabsItem>
 
-                <!-- ===================== -->
-                <!-- Google Drive / Docs Scaffold -->
-                <!-- ===================== -->
                 <RadzenTabsItem Text="Google Drive / Docs">
                     <RadzenCard>
                         <RadzenAlert Severity="AlertSeverity.Warning" Style="margin-bottom: 10px;">
@@ -190,14 +189,10 @@
                                           Click="@ImportSelectedGoogleFiles" />
                         </RadzenStack>
 
-                        <RadzenDivider />
 
-                        @if (!_googleConnected)
-                        {
+                        @if (!_googleConnected) {
                             <RadzenText TextStyle="TextStyle.Subtitle2">Not connected.</RadzenText>
-                        }
-                        else
-                        {
+                        } else {
                             <RadzenDataGrid Data="@_googleFiles"
                                             TItem="GoogleFileItem"
                                             AllowFiltering="false"
@@ -227,29 +222,32 @@
     [Inject] private NotificationService Notifications { get; set; } = default!;
     [Inject] private IDocumentIngestService IngestService { get; set; } = default!;
 
-    // ---------------------------
-    // Upload tab
-    // ---------------------------
+    public string Url { get; set; } = "";
+    public string Question { get; set; } = "";
+    public string Answer { get; set; } = "";
+    public string Status { get; set; } = "";
+
+    async Task Ask() {
+        Answer = "";
+        Answer = await RetrievalAugmentService.AskAsync(Question, CancellationToken.None);
+    }
+
     private readonly List<UploadItem> _stagedUploads = new();
 
-    private void OnUploadProgress(UploadProgressArgs args)
-    {
+    private void OnUploadProgress(UploadProgressArgs args) {
         // Optional: show progress (args.Progress is %)
     }
 
-    private async Task OnUploadChange(UploadChangeEventArgs args)
-    {
+    private async Task OnUploadChange(UploadChangeEventArgs args) {
         // Radzen gives files as IBrowserFile
-        foreach (var file in args.Files)
-        {
+        foreach (var file in args.Files) {
             if (!file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             if (_stagedUploads.Any(x => x.FileName.Equals(file.Name, StringComparison.OrdinalIgnoreCase) && x.SizeBytes == file.Size))
                 continue;
 
-            _stagedUploads.Add(new UploadItem
-            {
+            _stagedUploads.Add(new UploadItem {
                 Id = Guid.NewGuid(),
                 FileName = file.Name,
                 SizeBytes = file.Size,
@@ -261,24 +259,20 @@
         await Task.CompletedTask;
     }
 
-    private async Task IngestStagedUploads()
-    {
-        try
-        {
-            foreach (var item in _stagedUploads) item.Status = "Ingesting";
+    private async Task IngestStagedUploads() {
+        try {
+            foreach (var item in _stagedUploads)
+                item.Status = "Ingesting";
             StateHasChanged();
 
-            foreach (var item in _stagedUploads.ToList())
-            {
+            foreach (var item in _stagedUploads.ToList()) {
                 await using var stream = item.File!.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
                 await IngestService.IngestPdfAsync(item.FileName, stream, CancellationToken.None);
                 item.Status = "Done";
             }
 
             NotifySuccess($"Ingested {_stagedUploads.Count} PDFs.");
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             foreach (var item in _stagedUploads.Where(x => x.Status == "Ingesting"))
                 item.Status = "Failed";
 
@@ -288,30 +282,24 @@
 
     private void ClearUploads() => _stagedUploads.Clear();
 
-    private void RemoveUpload(Guid id)
-    {
+    private void RemoveUpload(Guid id) {
         var x = _stagedUploads.FirstOrDefault(s => s.Id == id);
-        if (x is not null) _stagedUploads.Remove(x);
+        if (x is not null)
+            _stagedUploads.Remove(x);
     }
 
-    // ---------------------------
-    // URL tab
-    // ---------------------------
     private string _bulkUrlText = "";
     private readonly UrlForm _urlForm = new();
     private readonly List<UrlItem> _urlItems = new();
 
-    private void AddUrl()
-    {
+    private void AddUrl() {
         var url = (_urlForm.Url ?? "").Trim();
-        if (!Uri.TryCreate(url, UriKind.Absolute, out _))
-        {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out _)) {
             NotifyWarn("Please enter a valid absolute URL.");
             return;
         }
 
-        if (_urlItems.Any(x => x.Url.Equals(url, StringComparison.OrdinalIgnoreCase)))
-        {
+        if (_urlItems.Any(x => x.Url.Equals(url, StringComparison.OrdinalIgnoreCase))) {
             NotifyInfo("That URL is already in the list.");
             return;
         }
@@ -320,19 +308,19 @@
         _urlForm.Url = "";
     }
 
-    private void ImportUrlsFromTextarea()
-    {
-        var lines = (_bulkUrlText ?? "")
+    private void ImportUrlsFromTextarea() {
+        IEnumerable<string> lines = (_bulkUrlText ?? "")
             .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(x => x.Trim())
             .Where(x => x.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
         int added = 0;
-        foreach (var url in lines)
-        {
-            if (!Uri.TryCreate(url, UriKind.Absolute, out _)) continue;
-            if (_urlItems.Any(x => x.Url.Equals(url, StringComparison.OrdinalIgnoreCase))) continue;
+        foreach (var url in lines) {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out _))
+                continue;
+            if (_urlItems.Any(x => x.Url.Equals(url, StringComparison.OrdinalIgnoreCase)))
+                continue;
 
             _urlItems.Add(new UrlItem { Id = Guid.NewGuid(), Url = url, Status = "Staged" });
             added++;
@@ -342,23 +330,19 @@
         NotifyInfo($"Imported {added} URLs.");
     }
 
-    private async Task IngestUrls()
-    {
-        try
-        {
-            foreach (var u in _urlItems) u.Status = "Ingesting";
+    private async Task IngestUrls() {
+        try {
+            foreach (var u in _urlItems)
+                u.Status = "Ingesting";
             StateHasChanged();
 
-            foreach (var u in _urlItems.ToList())
-            {
+            foreach (var u in _urlItems.ToList()) {
                 await IngestService.IngestUrlAsync(u.Url, CancellationToken.None);
                 u.Status = "Done";
             }
 
             NotifySuccess($"Ingested {_urlItems.Count} URLs.");
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             foreach (var u in _urlItems.Where(x => x.Status == "Ingesting"))
                 u.Status = "Failed";
 
@@ -368,29 +352,24 @@
 
     private void ClearUrls() => _urlItems.Clear();
 
-    private void RemoveUrl(Guid id)
-    {
+    private void RemoveUrl(Guid id) {
         var x = _urlItems.FirstOrDefault(s => s.Id == id);
-        if (x is not null) _urlItems.Remove(x);
+        if (x is not null)
+            _urlItems.Remove(x);
     }
 
-    // ---------------------------
-    // Google scaffold
-    // ---------------------------
     private bool _googleConnected;
     private readonly List<GoogleFileItem> _googleFiles = new();
 
     private IList<GoogleFileItem> _googleSelection = new List<GoogleFileItem>();
     private HashSet<string> _googleSelectedIds => _googleSelection.Select(s => s.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    private void ConnectGoogle()
-    {
+    private void ConnectGoogle() {
         _googleConnected = true;
         NotifyInfo("Google connection scaffold enabled. Wire OAuth + Drive API server-side next.");
     }
 
-    private void ListGoogleFiles()
-    {
+    private void ListGoogleFiles() {
         _googleFiles.Clear();
         _googleFiles.AddRange(new[]
         {
@@ -401,58 +380,40 @@
         NotifySuccess($"Loaded {_googleFiles.Count} example files (stub).");
     }
 
-    private async Task ImportSelectedGoogleFiles()
-    {
-        try
-        {
+    private async Task ImportSelectedGoogleFiles() {
+        try {
             var selected = _googleSelection.ToList();
-            if (selected.Count == 0)
-            {
+            if (selected.Count == 0) {
                 NotifyWarn("Select at least one file.");
                 return;
             }
 
-            // TODO:
-            // For each file:
-            // - If Google Doc: export to PDF/text via Drive API
-            // - If PDF: download bytes
-            // Then call ingest service (IngestPdfAsync or IngestTextAsync)
-
             await Task.Delay(50);
             NotifySuccess($"Imported {selected.Count} Google files (stub).");
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             NotifyError($"Google import failed: {ex.Message}");
         }
     }
 
-    // ---------------------------
-    // Helpers / Models
-    // ---------------------------
-    private static string BadgeStyle(string status) => status switch
-    {
+    private static string BadgeStyle(string status) => status switch {
         "Done" => "background: #1f7a1f; color: white;",
         "Failed" => "background: #a61b1b; color: white;",
         "Ingesting" => "background: #2f54eb; color: white;",
         _ => "background: #595959; color: white;"
     };
 
-    private static string FormatBytes(long bytes)
-    {
+    private static string FormatBytes(long bytes) {
         string[] sizes = { "B", "KB", "MB", "GB", "TB" };
         double len = bytes;
         int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
+        while (len >= 1024 && order < sizes.Length - 1) {
             order++;
             len /= 1024;
         }
         return $"{len:0.##} {sizes[order]}";
     }
 
-    private sealed class UploadItem
-    {
+    private sealed class UploadItem {
         public Guid Id { get; set; }
         public string FileName { get; set; } = "";
         public long SizeBytes { get; set; }
@@ -460,20 +421,17 @@
         public IBrowserFile? File { get; set; }
     }
 
-    private sealed class UrlItem
-    {
+    private sealed class UrlItem {
         public Guid Id { get; set; }
         public string Url { get; set; } = "";
         public string Status { get; set; } = "Staged";
     }
 
-    private sealed class UrlForm
-    {
+    private sealed class UrlForm {
         [Required] public string? Url { get; set; }
     }
 
-    private sealed class GoogleFileItem
-    {
+    private sealed class GoogleFileItem {
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
         public string MimeType { get; set; } = "";

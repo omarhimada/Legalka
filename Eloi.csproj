@@ -8,17 +8,22 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="eloi_Modelfile" />
     <None Remove="README.md" />
   </ItemGroup>
 
   <ItemGroup>
-	<Content Include="example.png">
-	  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	<Content Include="eloi_Modelfile">
+	  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	</Content>
 	<Content Include="Properties\launchSettings.json" />
 	<Content Include="README.md">
 	  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	</Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Models\Chat\EloiResponse.cs" />
   </ItemGroup>
 
 	<ItemGroup>
