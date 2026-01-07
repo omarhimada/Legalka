@@ -1,17 +1,18 @@
-﻿# Document Ingest (OLLama + SQLite RAG)
+﻿# LLM (OLLama + Gemma3-4 + SQLite RAG)
+## With a Blazor UI.
 
-**A friend of mine needed a lawyer - so I hooked him up with his own personal lawyer for free. It uses OLLama and a local SQLite RAG system. I think he found it more funny than useful. Although it was a fun experiment.**
+Starting the Blazor app will simultaneously create the `Ollama` process, and will look for the `eloi_Modelfile` for building on top of `Gemma3-4`. The first time that happens might take a while. The subsequent startups will be quicker due to a hashing mechanism.
 
-Ingesting documents into a **SQLite-backed RAG** store and query them with **Ollama**. 
+Ingests documents into a **SQLite-backed RAG** store and queries them with `Ollama` + `Gemma3-4` + your own customized `eloi_Modelfile`. 
+Customize the `eloi_Modelfile` to your liking.
+
 Upload **multiple PDFs at once**, add **URLs**, and (optionally) pull from **Google Drive / Google Docs** (scaffold/integration-ready). 
 Built with the Radzen & Blazor combo has been great for UI/UX.
-
 ---
-
-## What this is
 
 This project turns “a pile of PDFs (and links)” into a searchable, chunked knowledge base:
 
+1. **Chat**: pulls context from the information you've taught her before responding.
 1. **Ingest**: PDFs / URLs / Google Docs → extract text → chunk → embed → store in SQLite  
 2. **Retrieve**: semantic search over embeddings + metadata filters  
 3. **Generate**: send the retrieved context to an Ollama model for grounded answers
@@ -84,6 +85,8 @@ This project turns “a pile of PDFs (and links)” into a searchable, chunked k
   - Your ollama installation will run side-by-side (e.g.: `http://localhost:11434`)
   - Install: https://ollama.com  
   - Start the service: `ollama serve`
-- Pull at least one model:
+  - Select `gemma3-4` from the list of models available.
+  - Then you no longer have to use the official Ollama app.
+    - You can open the Blazor app and the process will run in the background with the customized Gemma model.
   - Chat model example: `ollama pull llama3`
   - Embeddings model example: `ollama pull nomic-embed-text`
