@@ -51,35 +51,10 @@
 ## Tech Stack
 
 - **Ollama** (local LLM + embeddings)
-- **SQLite** (local persistence)
-- **UglyToad.PdfPig** (PDF extraction)
-- **Radzen Blazor Components**
-- **Blazor Server**
-- **.NET / C#**
-- **SignalR**
-
----
-
-## Architecture (high level)
-
-**UI (Radzen Blazor)**  
-→ calls an ingest endpoint/service  
-→ publishes progress via **SignalR Hub**  
-→ writes to **SQLite**
-
-**Ingest Pipeline**
-- Source: PDF / URL / Google Doc  
-- Normalize text
-- Chunk (token/character window + overlap)
-- Embed (Ollama embeddings)
-- Persist: Document + Chunks + Embeddings + Metadata
-
-**Query Pipeline**
-- User prompt
-- Embed query (Ollama embeddings)
-- Vector search (SQLite)
-- Compose context (top-k chunks)
-- Generate answer (Ollama chat)
+- **Gemma3-4** (Google)
+- **SQLite** (RAG local persistence)
+- **UglyToad.PdfPig** (PDF text extraction)
+- **SignalR** (WebSockets for the seamless chat experience)
 
 ---
 
@@ -91,8 +66,10 @@
   - Your ollama installation will run side-by-side (e.g.: `http://localhost:11434`)
   - Install: https://ollama.com  
   - Start the service: `ollama serve`
-  - Select `gemma3-4` from the list of models available.
-  - Then you no longer have to use the official Ollama app.
-    - You can open the Blazor app and the process will run in the background with the customized Gemma model.
-  - Chat model example: `ollama pull llama3`
-  - Embeddings model example: `ollama pull nomic-embed-text`
+  - Select `gemma3-4` from the list of models available, let the base model download to your local directory.
+  - `ollama pull nomic-embed-text` afterwards, get the embedding model as well.
+  - **Then you no longer have to use the official Ollama app.**
+ 
+- You can open the Eloi app and the `ollama` process will run in the background automatically with the customized Gemma model pre-loaded.
+- Embeddings model example: `ollama pull nomic-embed-text`
+- Rename `EXAMPLE_eloi_Modelfile` to `eloi_Modelfile`. You'll probably change this often as you learn each other.
